@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cemitérios — Consulta de Inumações</title>
+
+<!-- Ícone e comportamento de app para ecrã principal (iPhone e Android) -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#2a4136">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Inumações">
 <style>
   :root{
     --ink:#1c2b26;
@@ -199,7 +208,7 @@
     <div class="search-row">
       <input id="q" type="text" placeholder="Escreva um nome..." autocomplete="off">
     </div>
-    <p class="hint" id="hint">Mostra-se sempre o local atual (LOCAL = S). Registos com "Transladado" já não estão nesse local.</p>
+    <p class="hint" id="hint">Pode usar * para saltar partes do nome — ex: "jo*sil*cos" encontra "JOAQUIM DA SILVA COSTA". Mostra-se sempre o local atual (LOCAL = S); "Transladado" já não está nesse local.</p>
   </div>
 
   <p class="count" id="count"></p>
@@ -225,9 +234,8 @@ function detectarSeparador(primeiraLinha){
   return pontoVirgula > virgula ? ';' : ',';
 }
 
-// parser simples de CSV, respeita campos entre aspas com separadores/quebras de linha lá dentro
 function parseCSV(texto){
-  texto = texto.replace(/^\uFEFF/, ''); // remove BOM se existir
+  texto = texto.replace(/^\uFEFF/, '');
   const sep = detectarSeparador(texto.split('\n')[0] || '');
   const linhas = [];
   let campo = '', linha = [], dentroAspas = false;
@@ -252,9 +260,9 @@ function parseCSV(texto){
 function normalizarData(v){
   if(!v) return '';
   v = v.trim();
-  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);          // yyyy-mm-dd
+  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if(m) return `${m[1]}-${m[2]}-${m[3]}`;
-  m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/); // dd/mm/yyyy ou dd-mm-yyyy
+  m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
   if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
   return v;
 }
@@ -306,6 +314,22 @@ function normalize(s){
     .toUpperCase().trim();
 }
 
+function escapeRegex(s){
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildMatcher(term){
+  if(term.indexOf('*') === -1){
+    return (nomeNormalizado) => nomeNormalizado.includes(term);
+  }
+  const partes = term.split('*').filter(p => p.length > 0).map(escapeRegex);
+  if(partes.length === 0){
+    return () => true;
+  }
+  const re = new RegExp(partes.join('.*'));
+  return (nomeNormalizado) => re.test(nomeNormalizado);
+}
+
 let mode = 'nome';
 const qInput = document.getElementById('q');
 const resultsEl = document.getElementById('results');
@@ -330,6 +354,7 @@ btnLocal.addEventListener('click', () => setMode('local'));
 function fmtData(v){
   if(!v) return '';
   const [y,m,d] = v.split('-');
+  if(!y || !m || !d) return v;
   return `${d}/${m}/${y}`;
 }
 
@@ -370,24 +395,6 @@ function cardHtml(r){
     </div>`;
 }
 
-function escapeRegex(s){
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// "jo*sil*cos" -> encontra JO, depois SIL, depois COS, por esta ordem, com
-// qualquer coisa (ou nada) entre eles. Sem "*" funciona como pesquisa normal.
-function buildMatcher(term){
-  if(term.indexOf('*') === -1){
-    return (nomeNormalizado) => nomeNormalizado.includes(term);
-  }
-  const partes = term.split('*').filter(p => p.length > 0).map(escapeRegex);
-  if(partes.length === 0){
-    return () => true;
-  }
-  const re = new RegExp(partes.join('.*'));
-  return (nomeNormalizado) => re.test(nomeNormalizado);
-}
-
 function render(){
   const raw = qInput.value;
   const term = normalize(raw);
@@ -401,7 +408,6 @@ function render(){
   if(mode === 'nome'){
     const matchNome = buildMatcher(term);
     matches = DADOS.filter(r => matchNome(normalize(r.n)));
-    // local atual primeiro, depois por nome
     matches.sort((a,b) => (b.loc==='S') - (a.loc==='S') || normalize(a.n).localeCompare(normalize(b.n)));
   } else {
     matches = DADOS.filter(r => normalize(r.c).includes(term));
