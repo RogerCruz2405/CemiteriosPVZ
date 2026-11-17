@@ -295,7 +295,15 @@ async function carregarDados(){
   try{
     const resp = await fetch('dados.csv', {cache:'no-store'});
     if(!resp.ok) throw new Error('dados.csv não encontrado');
-    const texto = await resp.text();
+    // O CSV pode ser exportado pelo Excel em UTF-8 ou Windows-1252 (ANSI).
+    // Tenta primeiro UTF-8; se houver bytes inválidos, usa Windows-1252.
+    const buffer = await resp.arrayBuffer();
+    let texto;
+    try {
+      texto = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    } catch (_) {
+      texto = new TextDecoder('windows-1252').decode(buffer);
+    }
     DADOS = csvParaDados(texto);
     document.getElementById('estado-dados').textContent =
       `${DADOS.length.toLocaleString('pt-PT')} registos carregados`;
@@ -359,7 +367,7 @@ function fmtData(v){
 }
 
 function cardHtml(r){
-  const isAqui = r.loc === 'S';
+  const isAqui = String(r.loc || '').trim().toUpperCase() === 'S';
   const cls = isAqui ? '' : ' transladado';
   const badge = isAqui
     ? '<span class="badge yes">Local atual</span>'
